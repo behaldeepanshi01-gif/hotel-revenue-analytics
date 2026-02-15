@@ -8,7 +8,8 @@
 # Generated data (can be reproduced by running scripts)
 data/raw/*.csv
 data/processed/*.csv
-output/plots/*.png
+
+# Plots are tracked so they're visible on GitHub
 
 # OS files
 .DS_Store
