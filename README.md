@@ -16,34 +16,119 @@ This project processes a messy 1,800-row dataset (simulating a PMS export like O
 
 ## Star Schema Design
 
+```mermaid
+erDiagram
+    fact_bookings ||--o{ dim_guest : guest_key
+    fact_bookings ||--o{ dim_room : room_key
+    fact_bookings ||--o{ dim_date : date_key
+    fact_bookings ||--o{ dim_channel : channel_key
+    fact_bookings ||--o{ dim_rate_code : rate_key
+
+    fact_bookings {
+        int fact_id PK
+        string booking_id
+        int guest_key FK
+        int room_key FK
+        int date_key FK
+        int channel_key FK
+        int rate_key FK
+        date check_in_date
+        date check_out_date
+        int nights
+        float daily_rate
+        float total_revenue
+        int booking_lead_days
+        int num_guests
+        boolean is_cancelled
+    }
+
+    dim_guest {
+        int guest_key PK
+        string guest_name
+        string loyalty_tier
+        string guest_type
+    }
+
+    dim_room {
+        int room_key PK
+        string room_type_code
+        string room_type_name
+        float rack_rate
+        string floor_category
+        int max_occupancy
+    }
+
+    dim_date {
+        int date_key PK
+        date full_date
+        int year
+        int quarter
+        string month_name
+        string day_of_week
+        boolean is_weekend
+        string season
+    }
+
+    dim_channel {
+        int channel_key PK
+        string channel_name
+        string channel_category
+        float commission_pct
+    }
+
+    dim_rate_code {
+        int rate_key PK
+        string rate_code
+        string rate_description
+        float discount_pct
+    }
 ```
-                    ┌──────────────┐
-                    │  dim_guest   │
-                    │──────────────│
-                    │ guest_key    │
-                    │ guest_name   │
-                    │ loyalty_tier │
-                    │ guest_type   │
-                    └──────┬───────┘
-                           │
-┌──────────────┐   ┌───────┴────────┐   ┌───────────────┐
-│  dim_room    │   │ fact_bookings  │   │  dim_channel   │
-│──────────────│   │────────────────│   │───────────────│
-│ room_key     ├──►│ fact_id        │◄──┤ channel_key   │
-│ room_type    │   │ booking_id     │   │ channel_name  │
-│ rack_rate    │   │ guest_key      │   │ category      │
-│ max_occupancy│   │ room_key       │   │ commission_pct│
-└──────────────┘   │ date_key       │   └───────────────┘
-                   │ channel_key    │
-┌──────────────┐   │ rate_key       │   ┌───────────────┐
-│  dim_date    │   │ nights         │   │ dim_rate_code  │
-│──────────────│   │ daily_rate     │   │───────────────│
-│ date_key     ├──►│ total_revenue  │◄──┤ rate_key      │
-│ full_date    │   │ lead_days      │   │ rate_code     │
-│ month/quarter│   │ num_guests     │   │ description   │
-│ season       │   │ is_cancelled   │   │ discount_pct  │
-│ is_weekend   │   └────────────────┘   └───────────────┘
-└──────────────┘
+
+## ETL Pipeline Flow
+
+```mermaid
+flowchart LR
+    A["Raw PMS Export\n1,830 rows\n7 data quality issues"] -->|EXTRACT| B["read_csv()"]
+    B -->|TRANSFORM| C{"Data Cleaning"}
+    C --> D["distinct() - remove 30 dupes"]
+    C --> E["str_trim / str_to_title\ncase standardization"]
+    C --> F["parse_date_time()\nmixed date formats"]
+    C --> G["case_when()\nunify Y/N encoding"]
+    C --> H["replace_na()\nimpute missing values"]
+    D & E & F & G & H --> I["Clean Dataset\n1,800 rows"]
+    I -->|LOAD| J["Star Schema\n5 dims + 1 fact"]
+    J --> K["CSV Export\ndata/processed/"]
+
+    style A fill:#C73E1D,color:#fff
+    style I fill:#F18F01,color:#fff
+    style J fill:#2E86AB,color:#fff
+    style K fill:#44BBA4,color:#fff
+```
+
+## Analytics & KPI Flow
+
+```mermaid
+flowchart TD
+    A["Star Schema Tables"] --> B["Denormalized View\nJOIN all dimensions"]
+    B --> C["Monthly KPIs"]
+    B --> D["Channel Mix"]
+    B --> E["Cancellation Analysis"]
+    B --> F["Loyalty Performance"]
+
+    C --> C1["ADR = Revenue / Rooms Sold"]
+    C --> C2["RevPAR = ADR x Occupancy"]
+    C --> C3["Occupancy = Sold / Available"]
+    C --> C4["ALOS = Nights / Bookings"]
+
+    B --> G["pivot_wider\nRevenue by Room x Quarter"]
+    B --> H["pivot_longer\nMonthly KPIs for faceting"]
+
+    G & H --> I["8 ggplot2\nVisualizations"]
+    C1 & C2 & C3 & C4 --> I
+    D & E & F --> I
+
+    style A fill:#2E86AB,color:#fff
+    style I fill:#44BBA4,color:#fff
 ```
 
 ## Key Hospitality Metrics
@@ -113,14 +198,27 @@ The ETL script (`02_etl_pipeline.R`) performs:
 
 Eight ggplot2 charts saved to `output/plots/`:
 
-1. **Monthly RevPAR Trend** - Line chart tracking revenue per available room
-2. **ADR by Room Type** - Bar chart comparing average daily rates
-3. **Revenue by Channel** - Stacked bar showing quarterly channel mix
-4. **Occupancy vs ADR** - Scatter plot with trend line and revenue sizing
-5. **Cancellation Rate by Channel** - Horizontal bar chart (OTA vs Direct)
-6. **Revenue by Season** - Seasonal demand patterns for DC market
-7. **KPI Dashboard** - Faceted line charts using `pivot_longer` output
-8. **Rate by Loyalty Tier** - Boxplot showing rate distribution across tiers
+| # | Chart | Description |
+|---|-------|-------------|
+| 1 | Monthly RevPAR Trend | Line chart tracking revenue per available room |
+| 2 | ADR by Room Type | Bar chart comparing average daily rates |
+| 3 | Revenue by Channel | Stacked bar showing quarterly channel mix |
+| 4 | Occupancy vs ADR | Scatter plot with trend line and revenue sizing |
+| 5 | Cancellation Rate by Channel | Horizontal bar chart (OTA vs Direct) |
+| 6 | Revenue by Season | Seasonal demand patterns for DC market |
+| 7 | KPI Dashboard | Faceted line charts using `pivot_longer` output |
+| 8 | Rate by Loyalty Tier | Boxplot showing rate distribution across tiers |
+
+### Sample Outputs
+
+<p align="center">
+  <img src="output/plots/01_revpar_trend.png" width="48%" />
+  <img src="output/plots/02_adr_by_room_type.png" width="48%" />
+</p>
+<p align="center">
+  <img src="output/plots/05_cancellation_by_channel.png" width="48%" />
+  <img src="output/plots/07_kpi_dashboard.png" width="48%" />
+</p>
 
 ## Project Structure
 
