@@ -1,0 +1,15 @@
+# R files
+.Rhistory
+.Rdata
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Generated data (can be reproduced by running scripts)
+data/raw/*.csv
+data/processed/*.csv
+output/plots/*.png
+
+# OS files
+.DS_Store
+Thumbs.db
